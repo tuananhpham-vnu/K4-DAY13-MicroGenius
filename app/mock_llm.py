@@ -22,8 +22,9 @@ class FakeResponse:
 
 
 class FakeLLM:
-    def __init__(self, model: str = "claude-sonnet-4-5") -> None:
+    def __init__(self, model: str = "claude-sonnet-4-5", max_output_tokens: int | None = None) -> None:
         self.model = model
+        self.max_output_tokens = max_output_tokens
 
     @observe(as_type="span")
     def generate(self, prompt: str) -> FakeResponse:
@@ -32,6 +33,8 @@ class FakeLLM:
         output_tokens = random.randint(80, 180)
         if STATE["cost_spike"]:
             output_tokens *= 4
+        if self.max_output_tokens:
+            output_tokens = min(output_tokens, self.max_output_tokens)
         answer = (
             "Starter answer. Teams should improve this output logic and add better quality checks. "
             "Use retrieved context and keep responses concise."

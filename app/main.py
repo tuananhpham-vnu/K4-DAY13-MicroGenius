@@ -10,6 +10,7 @@ from structlog.contextvars import bind_contextvars
 load_dotenv()
 
 from .agent import LabAgent
+from .audit import log_audit_event
 from .incidents import disable, enable, status
 from .logging_config import configure_logging, get_logger
 from .metrics import record_error, snapshot
@@ -101,20 +102,30 @@ async def chat(request: Request, body: ChatRequest) -> ChatResponse:
 
 
 @app.post("/incidents/{name}/enable")
-async def enable_incident(name: str) -> JSONResponse:
+async def enable_incident(name: str, request: Request) -> JSONResponse:
     try:
         enable(name)
         log.warning("incident_enabled", service="control", payload={"name": name})
+        log_audit_event(
+            "incident_enabled",
+            target=name,
+            correlation_id=getattr(request.state, "correlation_id", "unknown"),
+        )
         return JSONResponse({"ok": True, "incidents": status()})
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.post("/incidents/{name}/disable")
-async def disable_incident(name: str) -> JSONResponse:
+async def disable_incident(name: str, request: Request) -> JSONResponse:
     try:
         disable(name)
         log.warning("incident_disabled", service="control", payload={"name": name})
+        log_audit_event(
+            "incident_disabled",
+            target=name,
+            correlation_id=getattr(request.state, "correlation_id", "unknown"),
+        )
         return JSONResponse({"ok": True, "incidents": status()})
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

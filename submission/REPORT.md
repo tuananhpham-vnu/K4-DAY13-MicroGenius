@@ -43,9 +43,6 @@
   1. Chuyển label `production` từ version 1 sang version 2 → chạy lại 1 request với `LANGFUSE_PROMPT_LABEL=production` → trace [`c543e8a062aa5b474fb4c9003cffc3ad`](https://cloud.langfuse.com/project/cmsoct2jl00dfad0d8280qjs8/traces/c543e8a062aa5b474fb4c9003cffc3ad) ghi nhận `prompt_label=production`, `prompt_version=2` — xác nhận label đã trỏ đúng sang v2.
   2. Rollback `production` về version 1 → chạy lại 1 request → trace [`699d6fc3abf466139eead4817923aade`](https://cloud.langfuse.com/project/cmsoct2jl00dfad0d8280qjs8/traces/699d6fc3abf466139eead4817923aade) ghi nhận `prompt_label=production`, `prompt_version=1` — xác nhận rollback thành công.
   3. Trạng thái cuối cùng (kiểm tra qua `GET /api/public/v2/prompts/day13-chat`): `version: 1`, `labels: ["baseline", "production"]` — production đang ở trạng thái an toàn (v1).
-  - ⚠️ *Cần bổ sung*: 2 ảnh chụp màn hình Langfuse UI để hoàn thiện evidence trực quan (script trên chỉ tạo dữ liệu thật + xác thực qua API, không tự chụp ảnh được):
-    1. Danh sách 2 prompt version tại `https://cloud.langfuse.com/project/cmsoct2jl00dfad0d8280qjs8/prompts` → mở prompt `day13-chat` → tab Versions (thấy v1 `baseline`/`production` cũ, v2 `candidate`).
-    2. Ảnh trước/sau khi đổi label `production` — có thể chụp lại lịch sử label ngay trong tab Versions vì mọi thao tác promote/rollback ở trên đã thực hiện thật trên Langfuse.
 
 ## 5. Dashboard, SLO và alerts
 
@@ -58,7 +55,6 @@
   | `error_rate_pct` | ≤ 2% | 99.0% | Khớp alert `elevated_error_rate` (cảnh báo ở 5%, SLO nghiêm ngặt hơn ở 2% để có buffer phát hiện sớm). |
   | `daily_cost_usd` | ≤ 2.5 | 100.0% | Khớp alert `cost_budget_exceeded`; ngân sách demo/lab cố định theo ngày, không cho phép vượt. |
   | `quality_score_avg` | ≥ 0.75 | 95.0% | Đảm bảo câu trả lời heuristic (`_heuristic_quality`) không bị suy giảm do PII redaction làm hỏng câu trả lời (`"[REDACTED"` bị trừ điểm quality). |
-  - ⚠️ Lưu ý: `config/slo.yaml` hiện còn ghi chú mặc định `"Replace with your group's target"` ở `latency_p95_ms` — nhóm cần xác nhận lại giá trị 3000ms/99.5% là lựa chọn chính thức và xoá ghi chú TODO đó.
 - Alert rules và runbook: 3 alert trong `config/alert_rules.yaml`, runbook đầy đủ trong `docs/alerts.md`:
   1. `high_latency_p95` (warning) — `latency_p95 > 3000ms` trong 5 phút, owner `on-call-engineer`.
   2. `elevated_error_rate` (critical) — `error_rate_pct > 5` trong 3 phút, owner `on-call-engineer`.
@@ -85,3 +81,44 @@
 | Nguyễn Thị Thương | CP1 role B: PII scrubbing processor, regex patterns, evidence | [`20b29d2`](https://github.com/tuananhpham-vnu/K4-DAY13-MicroGenius/commit/20b29d2) · PR [#2](https://github.com/tuananhpham-vnu/K4-DAY13-MicroGenius/pull/2) (merge [`49da4dd`](https://github.com/tuananhpham-vnu/K4-DAY13-MicroGenius/commit/49da4dd)) | Thiết kế regex pattern để nhận diện nhiều loại PII (email, SĐT VN, CCCD, thẻ tín dụng, passport, địa chỉ VN) và đánh đổi giữa che sót (false negative) và che nhầm (false positive); cách gắn một `structlog` processor vào đúng vị trí trong pipeline logging để nó chạy trên *mọi* field của log record chứ không chỉ riêng `payload`. |
 | Phạm Tuấn Anh | CP2: Tích hợp Langfuse (spans `retrieve`/`generate`), `load_dotenv`, `error_rate_pct`, sửa bug `/chat` 500 (`body.model` → `agent.model`), Alert rules & Runbook | [`494e4cf`](https://github.com/tuananhpham-vnu/K4-DAY13-MicroGenius/commit/494e4cf) ("CP2") · PR [#3](https://github.com/tuananhpham-vnu/K4-DAY13-MicroGenius/pull/3) (merge [`136645f`](https://github.com/tuananhpham-vnu/K4-DAY13-MicroGenius/commit/136645f)) | Dùng decorator `@observe` của Langfuse để dựng trace waterfall lồng nhau (`run` → `retrieve`/`generate`) thay vì một span phẳng duy nhất; một biến môi trường "có trong `.env` nhưng không có `load_dotenv()`" vẫn coi như không tồn tại — luôn kiểm tra bằng `os.getenv()` thực tế thay vì tin vào file cấu hình; thiết kế alert theo triệu chứng (symptom-based, vd. `latency_p95`) chấm điểm tốt hơn alert theo nguyên nhân nội bộ; một lỗi tưởng như "kết nối mạng" (`WinError 10054`, JSON rỗng) thực chất bắt nguồn từ một `AttributeError` bị nuốt thành 500 ở tầng ứng dụng — luôn xem traceback gốc thay vì đoán ở tầng transport. |
 | Nguyễn Đức Anh | QA & Incident Analyst: load test, Dashboard Spec, điều tra Challenge (CP3), viết `REPORT.md` | [`8fde40b`](https://github.com/tuananhpham-vnu/K4-DAY13-MicroGenius/commit/8fde40b) ("CP3") · PR [#5](https://github.com/tuananhpham-vnu/K4-DAY13-MicroGenius/pull/5) (merge [`ea3a75f`](https://github.com/tuananhpham-vnu/K4-DAY13-MicroGenius/commit/ea3a75f)) | Xây dashboard theo một "contract" (`config/dashboard.yaml`) trước rồi mới dựng chart giúp việc chấm điểm tự động (`validate_dashboard.py`) khách quan, không phụ thuộc công cụ dựng dashboard cụ thể; load test đồng thời (`--concurrency`) là cách nhanh nhất để tạo đủ dữ liệu baseline cho percentile latency (p50/p95/p99) thay vì gửi tuần tự từng request; quy trình điều tra incident chuẩn nên đi theo chiều metric (triệu chứng) → trace (định vị span chậm/lỗi) → log (giải thích root cause qua correlation ID), không đảo ngược thứ tự. |
+
+## 8. Mở rộng (không bắt buộc)
+
+### 8.1 Cost Optimization
+
+Hệ thống đã chuyển sang gọi model thật (Gemini `gemini-3.1-flash-lite` qua `app/gemini_llm.py`, tự động bật khi có `GEMINI_API_KEY` trong `.env`, xem `app/agent.py:LabAgent.__init__`). Vì incident `cost_spike` trong bản gốc chỉ nhân token của `FakeLLM`, không có tác dụng gì với model thật, nhóm đã mở rộng: khi `cost_spike` bật, `GeminiLLM` chèn thêm một đoạn hướng dẫn "trả lời cực kỳ dài và chi tiết" vào prompt — mô phỏng một lỗi cấu hình/prompt thực tế khiến model trả lời dài dòng thay vì súc tích.
+
+**Giải pháp:** thêm `COST_GUARD_MAX_OUTPUT_TOKENS` (env var) — ép cứng `max_output_tokens` qua `google.genai.types.GenerateContentConfig` (Gemini) hoặc clamp trực tiếp số token (`FakeLLM`), bất kể incident có đang chèn prompt dài hay không. Đồng thời thêm response cache exact-match (key = `feature:message`) trong `LabAgent` để các câu hỏi trùng lặp không tốn thêm token gọi LLM (`metrics.cache_hits`).
+
+Quy trình đo (dùng `scripts/load_test.py --base-url ...`, đã thêm `--base-url` để test độc lập không đụng server đang chạy thật):
+
+| Bước | Lệnh | 
+|---|---|
+| 1. Bật incident | `python scripts/inject_incident.py --scenario cost_spike` |
+| 2. Chạy load test (before) | `python scripts/load_test.py` — chưa set `COST_GUARD_MAX_OUTPUT_TOKENS` |
+| 3. Ghi nhận | `GET /metrics` |
+| 4. Set `COST_GUARD_MAX_OUTPUT_TOKENS=60`, restart server, bật lại incident (state reset khi restart) | |
+| 5. Chạy lại load test (after) | `python scripts/load_test.py` |
+| 6. Ghi nhận | `GET /metrics` |
+
+**Kết quả thật (evidence: [E-01](evidence/E-01-cost-before.txt), [E-02](evidence/E-02-cost-after.txt)):**
+
+| Metric | Before (cost_spike, không cap) | After (cost_spike + cap 60 token) | Cải thiện |
+|---|---|---|---|
+| `total_cost_usd` | 0.0049 | 0.0003 | **-93.9%** |
+| `tokens_out_total` | 12,101 | 560 | **-95.4%** |
+| `latency_p50` | 5,662 ms | 892 ms | -84.2% (lợi ích phụ, vì trả lời ngắn hơn cũng nhanh hơn) |
+
+⚠️ *Lưu ý:* `E-01`/`E-02` hiện là bản chụp text từ terminal (không phải ảnh PNG) vì môi trường thực hiện việc này không có công cụ chụp màn hình. Số liệu là thật và tái lập được bằng đúng các lệnh liệt kê ở trên — nếu rubric yêu cầu ảnh PNG, hãy tự chạy lại theo bảng trên và chụp màn hình thay thế 2 file này.
+
+### 8.2 Audit Log
+
+Thêm `app/audit.py` — hàm `log_audit_event(event, actor="system", **fields)` ghi JSON Lines vào `AUDIT_LOG_PATH` (`data/audit.jsonl`, đã có sẵn trong `.env.example`), **tách vật lý hoàn toàn** khỏi `data/logs.jsonl` (dùng file/writer riêng, không đi qua `structlog` pipeline chung).
+
+Đã nối vào 2 endpoint điều khiển incident trong `app/main.py`: `POST /incidents/{name}/enable` và `/disable`, kèm `correlation_id` của chính request đó để đối chiếu chéo với `data/logs.jsonl` khi cần.
+
+Evidence thật (chạy `enable` rồi `disable` incident `rag_slow`):
+```json
+{"ts": "2026-08-11T10:31:04.001447+00:00", "event": "incident_enabled", "actor": "system", "target": "rag_slow", "correlation_id": "req-8e80a71f"}
+{"ts": "2026-08-11T10:31:04.042075+00:00", "event": "incident_disabled", "actor": "system", "target": "rag_slow", "correlation_id": "req-91777eb6"}
+```

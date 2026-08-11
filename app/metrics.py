@@ -10,6 +10,7 @@ REQUEST_TOKENS_OUT: list[int] = []
 ERRORS: Counter[str] = Counter()
 TRAFFIC: int = 0
 QUALITY_SCORES: list[float] = []
+CACHE_HITS: int = 0
 
 
 def record_request(latency_ms: int, cost_usd: float, tokens_in: int, tokens_out: int, quality_score: float) -> None:
@@ -20,6 +21,11 @@ def record_request(latency_ms: int, cost_usd: float, tokens_in: int, tokens_out:
     REQUEST_TOKENS_IN.append(tokens_in)
     REQUEST_TOKENS_OUT.append(tokens_out)
     QUALITY_SCORES.append(quality_score)
+
+
+def record_cache_hit() -> None:
+    global CACHE_HITS
+    CACHE_HITS += 1
 
 
 
@@ -54,4 +60,5 @@ def snapshot() -> dict:
         "error_rate_pct": round(error_rate, 2),
         "error_breakdown": dict(ERRORS),
         "quality_avg": round(mean(QUALITY_SCORES), 4) if QUALITY_SCORES else 0.0,
+        "cache_hits": CACHE_HITS,
     }
