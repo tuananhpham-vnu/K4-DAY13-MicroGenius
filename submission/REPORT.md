@@ -31,13 +31,21 @@
 
 ## 4. Prompt versioning
 
-> ⚠️ *Phần này chưa có evidence trong `submission/evidence/` — cần hoàn thành theo `docs/PROMPT_VERSIONING.md` trước khi nộp bài.*
-
 - Prompt name: `day13-chat`
-- Version/label baseline: *(cần điền — tạo version 1, gắn label `baseline` + `production` trên Langfuse Prompt Management)*
-- Version/label candidate: *(cần điền — tạo version 2 với thay đổi nhỏ về format/độ dài, gắn label `candidate`)*
-- Trace ID của mỗi version: *(cần điền — chạy cùng input với `LANGFUSE_PROMPT_LABEL=baseline` và `candidate`, lấy 2 trace ID tương ứng)*
-- Bằng chứng đổi label hoặc rollback: *(cần điền — chuyển `production` sang version 2, chạy lại 1 request, sau đó rollback `production` về version 1 và chụp ảnh trước/sau)*
+- Version/label baseline: **version 1**, labels `["baseline", "production"]` — nội dung gốc 3 biến `Feature/Docs/Question`, commit message "v1 baseline - original 3-variable template".
+- Version/label candidate: **version 2**, label `["candidate"]` — thêm ràng buộc "Answer in at most 3 concise sentences.", commit message "v2 candidate - constrain answer to 3 sentences".
+- Trace ID của mỗi version (xác thực qua Langfuse REST API `GET /api/public/traces/{id}`, field `metadata.prompt_name/prompt_label/prompt_version` trên observation `GENERATION`):
+  | Label chạy | Trace ID | prompt_label ghi nhận | prompt_version ghi nhận |
+  |---|---|---|---|
+  | `baseline` | [`646a6c9454cd0b0070c72d6a5d79509f`](https://cloud.langfuse.com/project/cmsoct2jl00dfad0d8280qjs8/traces/646a6c9454cd0b0070c72d6a5d79509f) | `baseline` | `1` |
+  | `candidate` | [`b2efdd2992df8ceecafaecb01e9bc270`](https://cloud.langfuse.com/project/cmsoct2jl00dfad0d8280qjs8/traces/b2efdd2992df8ceecafaecb01e9bc270) | `candidate` | `2` |
+- Bằng chứng đổi label / rollback `production` (cũng xác thực qua REST API, không chỉ log ứng dụng):
+  1. Chuyển label `production` từ version 1 sang version 2 → chạy lại 1 request với `LANGFUSE_PROMPT_LABEL=production` → trace [`c543e8a062aa5b474fb4c9003cffc3ad`](https://cloud.langfuse.com/project/cmsoct2jl00dfad0d8280qjs8/traces/c543e8a062aa5b474fb4c9003cffc3ad) ghi nhận `prompt_label=production`, `prompt_version=2` — xác nhận label đã trỏ đúng sang v2.
+  2. Rollback `production` về version 1 → chạy lại 1 request → trace [`699d6fc3abf466139eead4817923aade`](https://cloud.langfuse.com/project/cmsoct2jl00dfad0d8280qjs8/traces/699d6fc3abf466139eead4817923aade) ghi nhận `prompt_label=production`, `prompt_version=1` — xác nhận rollback thành công.
+  3. Trạng thái cuối cùng (kiểm tra qua `GET /api/public/v2/prompts/day13-chat`): `version: 1`, `labels: ["baseline", "production"]` — production đang ở trạng thái an toàn (v1).
+  - ⚠️ *Cần bổ sung*: 2 ảnh chụp màn hình Langfuse UI để hoàn thiện evidence trực quan (script trên chỉ tạo dữ liệu thật + xác thực qua API, không tự chụp ảnh được):
+    1. Danh sách 2 prompt version tại `https://cloud.langfuse.com/project/cmsoct2jl00dfad0d8280qjs8/prompts` → mở prompt `day13-chat` → tab Versions (thấy v1 `baseline`/`production` cũ, v2 `candidate`).
+    2. Ảnh trước/sau khi đổi label `production` — có thể chụp lại lịch sử label ngay trong tab Versions vì mọi thao tác promote/rollback ở trên đã thực hiện thật trên Langfuse.
 
 ## 5. Dashboard, SLO và alerts
 
