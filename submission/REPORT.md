@@ -65,13 +65,12 @@
 > Challenge đã chạy: `python scripts/inject_incident.py` rồi `python scripts/load_test.py --challenge --concurrency 5`. Cả 5 request chính thức (`session_id` từ `k4-challenge-s01` đến `s05`) đều có trong `data/logs.jsonl`, và cả 5 đều vượt `latency_threshold_ms=2000`.
 
 - Challenge ID: `day13-k4-observability-v1` (cohort `K4`, seed `1304`, theo `config/challenge.json`).
-- Triệu chứng từ metrics: `latency_p95` tăng từ **1,129 ms** (baseline, [D-04](evidence/D-04-metrics-before.png)) lên **3,996 ms** ([D-05](evidence/D-05-metrics-after.png)) — gấp 3.5 lần, vượt cả `latency_threshold_ms=2000` của challenge lẫn SLO 3,000 ms trong `config/dashboard.yaml`. Cả 5/5 request chính thức đều vượt ngưỡng. Trên dashboard ([D-07](evidence/D-07-dashboard-after.png)) chỉ panel Latency chuyển đỏ VƯỢT NGƯỠNG, còn traffic, error rate (0%), cost, tokens và quality vẫn ĐẠT — đây là bằng chứng loại trừ, cho thấy sự cố khu trú ở độ trễ chứ không phải lỗi hệ thống hay quá tải.
-- Trace ID liên quan: `5a68a6d2537f4df7a43a48715519f2c5` (session `k4-challenge-s02`, tổng 3.998 s). Waterfall cho thấy span **`retrieve` chiếm 2.508 s = 62.7% thời gian request**, trong khi `generate` chỉ 0.156 s — chậm gấp 16 lần. Hai trace đối chứng cùng dạng: `73602947f15d9c6020cd21b982e7c148` (s03, 3.672 s) và `abb937c7552ddd4b4997c4b7734ab96a` (s01, 3.606 s).
-- Log line/correlation ID liên quan: `req-240b3f38` ([D-06](evidence/D-06-challenge-log.png)) — `latency_ms: 3996`, `feature: monitoring`, `session_id: k4-challenge-s02`. Hai dòng `request_received` (`09:21:07.195880Z`) và `response_sent` (`09:21:11.195123Z`) cách nhau đúng **4.000 s**, khớp với `latency_ms` trong log và 3.998 s trong trace — ba nguồn độc lập cùng chỉ về một con số. Đủ 5 correlation ID vượt ngưỡng: `req-240b3f38` (3,996 ms), `req-3790faca` (3,671), `req-09e46eb8` (3,651), `req-a277bfde` (3,604), `req-7e6ca59c` (3,570).
-- Root cause: bước RAG retrieval bị chèn delay cố định 2.5 s — `time.sleep(2.5)` tại `app/mock_rag.py:21` khi `STATE["rag_slow"]` được bật. Phần latency tăng thêm (~2.5 s so với baseline ~1.1 s) khớp chính xác thời lượng span `retrieve`. Mọi request `feature=monitoring` đều dính vì `retrieve()` là bước bắt buộc trong `LabAgent.run()`.
-  - **Phát hiện thêm:** client đo được 7,233–18,569 ms trong khi server chỉ ghi 3,570–3,996 ms — chênh tới 4.6 lần. Nguyên nhân: `/chat` là `async def` (`app/main.py:49`) nhưng gọi `agent.run()` đồng bộ (dòng 66), mà `time.sleep` là lệnh blocking nên nó chặn cả event loop; với `--concurrency 5`, các request bị xếp hàng nối đuôi thay vì chạy song song. Đồng thời `latency_ms` chỉ được đo bên trong `agent.run()` (`app/agent.py:31-43`) nên **không tính thời gian chờ hàng đợi** — instrumentation hiện tại đang báo cáo thấp hơn trải nghiệm thật của người dùng.
-- Fix action: (1) *Khắc phục tức thời* — tắt incident bằng `python scripts/inject_incident.py --disable` (`POST /incidents/rag_slow/disable`), đưa p95 về mức baseline. (2) *Nếu là hệ thống production* — đặt **timeout cho bước retrieval** (vd. 500 ms) kèm fallback trả lời không có tài liệu, để một vector store chậm không kéo sập toàn bộ độ trễ; và **không chặn event loop**: chuyển `retrieve` sang bất đồng bộ, hoặc chạy `agent.run()` qua `asyncio.to_thread()`, hoặc khai báo endpoint là `def` để FastAPI tự đẩy sang threadpool — tránh việc một request chậm làm chậm lây sang mọi request đang chờ.
-- Preventive measure: (1) Alert `high_latency_p95` sẵn có trong `config/alert_rules.yaml` (`latency_p95 > 3000ms` duy trì 5 phút) đủ sức bắt sự cố này vì p95 đạt 3,996 ms. (2) **Ghi thêm latency đo ở middleware** (`x-response-time-ms`, đã có sẵn — xem [A-01](evidence/A-01-response-correlation-id.png)) vào log `response_sent` bên cạnh `latency_ms` của agent: chênh lệch giữa hai con số chính là thời gian chờ hàng đợi, thứ mà lần điều tra này chỉ phát hiện được nhờ đọc output của load test chứ không phải từ log. (3) Bổ sung metric thời lượng riêng cho từng span (`retrieve`, `generate`) để biết ngay thành phần nào thoái hoá thay vì phải mở trace thủ công. (4) Đặt SLO theo độ trễ end-to-end phía client, không chỉ theo thời gian xử lý nội bộ.
+- Triệu chứng từ metrics: *(cần điền — kỳ vọng `latency_p95`/`latency_p99` tăng vượt `latency_threshold_ms=2000` ở feature `monitoring` sau khi chạy challenge, vì incident cấu hình sẵn là `rag_slow`)*.
+- Trace ID liên quan: *(cần điền — lọc Langfuse theo `session_id` bắt đầu bằng `k4-challenge-`)*.
+- Log line/correlation ID liên quan: *(cần điền — tìm trong `data/logs.jsonl` các record có `feature=monitoring` và `latency_ms` cao bất thường)*.
+- Root cause: *(cần điền sau khi điều tra — giả thuyết ban đầu: span `retrieve` bị chậm do incident `rag_slow` giả lập `time.sleep(2.5)` trong `app/mock_rag.py:retrieve`)*.
+- Fix action: *(cần điền — ví dụ tắt incident qua `POST /incidents/rag_slow/disable` hoặc tối ưu bước truy xuất tài liệu)*.
+- Preventive measure: *(cần điền — ví dụ thêm alert `high_latency_p95` đã có sẵn ở mục 5 để phát hiện sớm tình huống tương tự trong tương lai)*.
 
 ## 7. Đóng góp cá nhân
 
@@ -81,44 +80,3 @@
 | Nguyễn Thị Thương | CP1 role B: PII scrubbing processor, regex patterns, evidence | [`20b29d2`](https://github.com/tuananhpham-vnu/K4-DAY13-MicroGenius/commit/20b29d2) · PR [#2](https://github.com/tuananhpham-vnu/K4-DAY13-MicroGenius/pull/2) (merge [`49da4dd`](https://github.com/tuananhpham-vnu/K4-DAY13-MicroGenius/commit/49da4dd)) | Thiết kế regex pattern để nhận diện nhiều loại PII (email, SĐT VN, CCCD, thẻ tín dụng, passport, địa chỉ VN) và đánh đổi giữa che sót (false negative) và che nhầm (false positive); cách gắn một `structlog` processor vào đúng vị trí trong pipeline logging để nó chạy trên *mọi* field của log record chứ không chỉ riêng `payload`. |
 | Phạm Tuấn Anh | CP2: Tích hợp Langfuse (spans `retrieve`/`generate`), `load_dotenv`, `error_rate_pct`, sửa bug `/chat` 500 (`body.model` → `agent.model`), Alert rules & Runbook | [`494e4cf`](https://github.com/tuananhpham-vnu/K4-DAY13-MicroGenius/commit/494e4cf) ("CP2") · PR [#3](https://github.com/tuananhpham-vnu/K4-DAY13-MicroGenius/pull/3) (merge [`136645f`](https://github.com/tuananhpham-vnu/K4-DAY13-MicroGenius/commit/136645f)) | Dùng decorator `@observe` của Langfuse để dựng trace waterfall lồng nhau (`run` → `retrieve`/`generate`) thay vì một span phẳng duy nhất; một biến môi trường "có trong `.env` nhưng không có `load_dotenv()`" vẫn coi như không tồn tại — luôn kiểm tra bằng `os.getenv()` thực tế thay vì tin vào file cấu hình; thiết kế alert theo triệu chứng (symptom-based, vd. `latency_p95`) chấm điểm tốt hơn alert theo nguyên nhân nội bộ; một lỗi tưởng như "kết nối mạng" (`WinError 10054`, JSON rỗng) thực chất bắt nguồn từ một `AttributeError` bị nuốt thành 500 ở tầng ứng dụng — luôn xem traceback gốc thay vì đoán ở tầng transport. |
 | Nguyễn Đức Anh | QA & Incident Analyst: load test, Dashboard Spec, điều tra Challenge (CP3), viết `REPORT.md` | [`8fde40b`](https://github.com/tuananhpham-vnu/K4-DAY13-MicroGenius/commit/8fde40b) ("CP3") · PR [#5](https://github.com/tuananhpham-vnu/K4-DAY13-MicroGenius/pull/5) (merge [`ea3a75f`](https://github.com/tuananhpham-vnu/K4-DAY13-MicroGenius/commit/ea3a75f)) | Xây dashboard theo một "contract" (`config/dashboard.yaml`) trước rồi mới dựng chart giúp việc chấm điểm tự động (`validate_dashboard.py`) khách quan, không phụ thuộc công cụ dựng dashboard cụ thể; load test đồng thời (`--concurrency`) là cách nhanh nhất để tạo đủ dữ liệu baseline cho percentile latency (p50/p95/p99) thay vì gửi tuần tự từng request; quy trình điều tra incident chuẩn nên đi theo chiều metric (triệu chứng) → trace (định vị span chậm/lỗi) → log (giải thích root cause qua correlation ID), không đảo ngược thứ tự. |
-
-## 8. Mở rộng (không bắt buộc)
-
-### 8.1 Cost Optimization
-
-Hệ thống đã chuyển sang gọi model thật (Gemini `gemini-3.1-flash-lite` qua `app/gemini_llm.py`, tự động bật khi có `GEMINI_API_KEY` trong `.env`, xem `app/agent.py:LabAgent.__init__`). Vì incident `cost_spike` trong bản gốc chỉ nhân token của `FakeLLM`, không có tác dụng gì với model thật, nhóm đã mở rộng: khi `cost_spike` bật, `GeminiLLM` chèn thêm một đoạn hướng dẫn "trả lời cực kỳ dài và chi tiết" vào prompt — mô phỏng một lỗi cấu hình/prompt thực tế khiến model trả lời dài dòng thay vì súc tích.
-
-**Giải pháp:** thêm `COST_GUARD_MAX_OUTPUT_TOKENS` (env var) — ép cứng `max_output_tokens` qua `google.genai.types.GenerateContentConfig` (Gemini) hoặc clamp trực tiếp số token (`FakeLLM`), bất kể incident có đang chèn prompt dài hay không. Đồng thời thêm response cache exact-match (key = `feature:message`) trong `LabAgent` để các câu hỏi trùng lặp không tốn thêm token gọi LLM (`metrics.cache_hits`).
-
-Quy trình đo (dùng `scripts/load_test.py --base-url ...`, đã thêm `--base-url` để test độc lập không đụng server đang chạy thật):
-
-| Bước | Lệnh | 
-|---|---|
-| 1. Bật incident | `python scripts/inject_incident.py --scenario cost_spike` |
-| 2. Chạy load test (before) | `python scripts/load_test.py` — chưa set `COST_GUARD_MAX_OUTPUT_TOKENS` |
-| 3. Ghi nhận | `GET /metrics` |
-| 4. Set `COST_GUARD_MAX_OUTPUT_TOKENS=60`, restart server, bật lại incident (state reset khi restart) | |
-| 5. Chạy lại load test (after) | `python scripts/load_test.py` |
-| 6. Ghi nhận | `GET /metrics` |
-
-**Kết quả thật (evidence: [E-01](evidence/E-01-cost-before.txt), [E-02](evidence/E-02-cost-after.txt)):**
-
-| Metric | Before (cost_spike, không cap) | After (cost_spike + cap 60 token) | Cải thiện |
-|---|---|---|---|
-| `total_cost_usd` | 0.0049 | 0.0003 | **-93.9%** |
-| `tokens_out_total` | 12,101 | 560 | **-95.4%** |
-| `latency_p50` | 5,662 ms | 892 ms | -84.2% (lợi ích phụ, vì trả lời ngắn hơn cũng nhanh hơn) |
-
-⚠️ *Lưu ý:* `E-01`/`E-02` hiện là bản chụp text từ terminal (không phải ảnh PNG) vì môi trường thực hiện việc này không có công cụ chụp màn hình. Số liệu là thật và tái lập được bằng đúng các lệnh liệt kê ở trên — nếu rubric yêu cầu ảnh PNG, hãy tự chạy lại theo bảng trên và chụp màn hình thay thế 2 file này.
-
-### 8.2 Audit Log
-
-Thêm `app/audit.py` — hàm `log_audit_event(event, actor="system", **fields)` ghi JSON Lines vào `AUDIT_LOG_PATH` (`data/audit.jsonl`, đã có sẵn trong `.env.example`), **tách vật lý hoàn toàn** khỏi `data/logs.jsonl` (dùng file/writer riêng, không đi qua `structlog` pipeline chung).
-
-Đã nối vào 2 endpoint điều khiển incident trong `app/main.py`: `POST /incidents/{name}/enable` và `/disable`, kèm `correlation_id` của chính request đó để đối chiếu chéo với `data/logs.jsonl` khi cần.
-
-Evidence thật (chạy `enable` rồi `disable` incident `rag_slow`):
-```json
-{"ts": "2026-08-11T10:31:04.001447+00:00", "event": "incident_enabled", "actor": "system", "target": "rag_slow", "correlation_id": "req-8e80a71f"}
-{"ts": "2026-08-11T10:31:04.042075+00:00", "event": "incident_disabled", "actor": "system", "target": "rag_slow", "correlation_id": "req-91777eb6"}
-```
