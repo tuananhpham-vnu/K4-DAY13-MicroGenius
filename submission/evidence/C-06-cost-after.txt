@@ -1,0 +1,44 @@
+$ $env:COST_GUARD_MAX_OUTPUT_TOKENS = "60"
+$ python -m uvicorn app.main:app --port 8031
+$ curl -X POST http://127.0.0.1:8031/incidents/cost_spike/enable
+{"ok":true,"incidents":{"rag_slow":false,"tool_fail":false,"cost_spike":true}}
+
+$ python scripts/load_test.py --base-url http://127.0.0.1:8031
+[200] req-67e484ff | qa | 2283.3ms
+[200] req-1e486a61 | qa | 766.9ms
+[200] req-62e2c970 | summary | 860.7ms
+[200] req-3b07fc5c | qa | 895.2ms
+[200] req-6e085b5a | qa | 860.4ms
+[200] req-743003dc | summary | 933.0ms
+[200] req-4fec01f4 | qa | 898.0ms
+[200] req-90492374 | qa | 838.2ms
+[200] req-c4c3dddf | qa | 921.2ms
+[200] req-752228d0 | qa | 961.0ms
+
+$ curl -s http://127.0.0.1:8031/metrics | python -m json.tool
+{
+    "traffic": 10,
+    "latency_p50": 892.0,
+    "latency_p95": 1969.0,
+    "latency_p99": 1969.0,
+    "avg_cost_usd": 0.0,
+    "total_cost_usd": 0.0003,
+    "tokens_in_total": 536,
+    "tokens_out_total": 560,
+    "error_rate_pct": 0.0,
+    "error_breakdown": {},
+    "quality_avg": 0.9,
+    "cache_hits": 0
+}
+
+Setup: same as E-01 (Gemini, incident cost_spike ON), but with
+COST_GUARD_MAX_OUTPUT_TOKENS=60 set before starting the server. GeminiLLM
+passes this as max_output_tokens in google.genai.types.GenerateContentConfig,
+hard-capping every response regardless of the fault-injection prompt suffix.
+
+Result vs E-01 (before):
+  total_cost_usd:   0.0049 -> 0.0003   (-93.9%)
+  tokens_out_total: 12101  -> 560      (-95.4%)
+  latency_p50:      5662ms -> 892ms    (-84.2%, side benefit)
+
+NOTE: text capture, not a PNG screenshot - see note in E-01.

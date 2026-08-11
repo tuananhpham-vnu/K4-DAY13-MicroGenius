@@ -1,0 +1,42 @@
+$ curl -X POST http://127.0.0.1:8030/incidents/cost_spike/enable
+{"ok":true,"incidents":{"rag_slow":false,"tool_fail":false,"cost_spike":true}}
+
+$ python scripts/load_test.py --base-url http://127.0.0.1:8030
+[200] req-f6056092 | qa | 5265.8ms
+[200] req-a9491148 | qa | 5670.8ms
+[200] req-fa7da23e | summary | 4807.2ms
+[200] req-6cacd55e | qa | 5178.1ms
+[200] req-da1add0a | qa | 5878.7ms
+[200] req-3a0e0728 | summary | 5420.6ms
+[200] req-0e3fded9 | qa | 5935.5ms
+[200] req-839efdbd | qa | 6312.6ms
+[200] req-a4651ce6 | qa | 5562.6ms
+[200] req-1eb0e760 | qa | 6149.6ms
+
+$ curl -s http://127.0.0.1:8030/metrics | python -m json.tool
+{
+    "traffic": 10,
+    "latency_p50": 5662.0,
+    "latency_p95": 6305.0,
+    "latency_p99": 6305.0,
+    "avg_cost_usd": 0.0005,
+    "total_cost_usd": 0.0049,
+    "tokens_in_total": 536,
+    "tokens_out_total": 12101,
+    "error_rate_pct": 0.0,
+    "error_breakdown": {},
+    "quality_avg": 0.9,
+    "cache_hits": 0
+}
+
+Setup: LLM provider = Gemini (gemini-3.1-flash-lite), incident cost_spike ON,
+no COST_GUARD_MAX_OUTPUT_TOKENS set. Under cost_spike, GeminiLLM appends a
+"verbose answer" fault-injection suffix to the prompt, simulating a
+prompt/config regression that makes the model ramble instead of answering
+concisely.
+
+NOTE: this is a text capture of the actual terminal run, not a PNG
+screenshot (no screen-capture tool available in this environment). Replace
+with a real screenshot of your own terminal for the final submission if a
+PNG is required by the grading rubric - the underlying data is real and
+reproducible with the commands above.

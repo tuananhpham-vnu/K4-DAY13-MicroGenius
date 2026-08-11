@@ -31,13 +31,18 @@
 
 ## 4. Prompt versioning
 
-> ⚠️ *Phần này chưa có evidence trong `submission/evidence/` — cần hoàn thành theo `docs/PROMPT_VERSIONING.md` trước khi nộp bài.*
-
 - Prompt name: `day13-chat`
-- Version/label baseline: *(cần điền — tạo version 1, gắn label `baseline` + `production` trên Langfuse Prompt Management)*
-- Version/label candidate: *(cần điền — tạo version 2 với thay đổi nhỏ về format/độ dài, gắn label `candidate`)*
-- Trace ID của mỗi version: *(cần điền — chạy cùng input với `LANGFUSE_PROMPT_LABEL=baseline` và `candidate`, lấy 2 trace ID tương ứng)*
-- Bằng chứng đổi label hoặc rollback: *(cần điền — chuyển `production` sang version 2, chạy lại 1 request, sau đó rollback `production` về version 1 và chụp ảnh trước/sau)*
+- Version/label baseline: **version 1**, labels `["baseline", "production"]` — nội dung gốc 3 biến `Feature/Docs/Question`, commit message "v1 baseline - original 3-variable template".
+- Version/label candidate: **version 2**, label `["candidate"]` — thêm ràng buộc "Answer in at most 3 concise sentences.", commit message "v2 candidate - constrain answer to 3 sentences".
+- Trace ID của mỗi version (xác thực qua Langfuse REST API `GET /api/public/traces/{id}`, field `metadata.prompt_name/prompt_label/prompt_version` trên observation `GENERATION`):
+  | Label chạy | Trace ID | prompt_label ghi nhận | prompt_version ghi nhận |
+  |---|---|---|---|
+  | `baseline` | [`646a6c9454cd0b0070c72d6a5d79509f`](https://cloud.langfuse.com/project/cmsoct2jl00dfad0d8280qjs8/traces/646a6c9454cd0b0070c72d6a5d79509f) | `baseline` | `1` |
+  | `candidate` | [`b2efdd2992df8ceecafaecb01e9bc270`](https://cloud.langfuse.com/project/cmsoct2jl00dfad0d8280qjs8/traces/b2efdd2992df8ceecafaecb01e9bc270) | `candidate` | `2` |
+- Bằng chứng đổi label / rollback `production` (cũng xác thực qua REST API, không chỉ log ứng dụng):
+  1. Chuyển label `production` từ version 1 sang version 2 → chạy lại 1 request với `LANGFUSE_PROMPT_LABEL=production` → trace [`c543e8a062aa5b474fb4c9003cffc3ad`](https://cloud.langfuse.com/project/cmsoct2jl00dfad0d8280qjs8/traces/c543e8a062aa5b474fb4c9003cffc3ad) ghi nhận `prompt_label=production`, `prompt_version=2` — xác nhận label đã trỏ đúng sang v2.
+  2. Rollback `production` về version 1 → chạy lại 1 request → trace [`699d6fc3abf466139eead4817923aade`](https://cloud.langfuse.com/project/cmsoct2jl00dfad0d8280qjs8/traces/699d6fc3abf466139eead4817923aade) ghi nhận `prompt_label=production`, `prompt_version=1` — xác nhận rollback thành công.
+  3. Trạng thái cuối cùng (kiểm tra qua `GET /api/public/v2/prompts/day13-chat`): `version: 1`, `labels: ["baseline", "production"]` — production đang ở trạng thái an toàn (v1).
 
 ## 5. Dashboard, SLO và alerts
 
@@ -50,7 +55,6 @@
   | `error_rate_pct` | ≤ 2% | 99.0% | Khớp alert `elevated_error_rate` (cảnh báo ở 5%, SLO nghiêm ngặt hơn ở 2% để có buffer phát hiện sớm). |
   | `daily_cost_usd` | ≤ 2.5 | 100.0% | Khớp alert `cost_budget_exceeded`; ngân sách demo/lab cố định theo ngày, không cho phép vượt. |
   | `quality_score_avg` | ≥ 0.75 | 95.0% | Đảm bảo câu trả lời heuristic (`_heuristic_quality`) không bị suy giảm do PII redaction làm hỏng câu trả lời (`"[REDACTED"` bị trừ điểm quality). |
-  - ⚠️ Lưu ý: `config/slo.yaml` hiện còn ghi chú mặc định `"Replace with your group's target"` ở `latency_p95_ms` — nhóm cần xác nhận lại giá trị 3000ms/99.5% là lựa chọn chính thức và xoá ghi chú TODO đó.
 - Alert rules và runbook: 3 alert trong `config/alert_rules.yaml`, runbook đầy đủ trong `docs/alerts.md`:
   1. `high_latency_p95` (warning) — `latency_p95 > 3000ms` trong 5 phút, owner `on-call-engineer`.
   2. `elevated_error_rate` (critical) — `error_rate_pct > 5` trong 3 phút, owner `on-call-engineer`.
@@ -61,13 +65,12 @@
 > Challenge đã chạy: `python scripts/inject_incident.py` rồi `python scripts/load_test.py --challenge --concurrency 5`. Cả 5 request chính thức (`session_id` từ `k4-challenge-s01` đến `s05`) đều có trong `data/logs.jsonl`, và cả 5 đều vượt `latency_threshold_ms=2000`.
 
 - Challenge ID: `day13-k4-observability-v1` (cohort `K4`, seed `1304`, theo `config/challenge.json`).
-- Triệu chứng từ metrics: `latency_p95` tăng từ **1,129 ms** (baseline, [D-04](evidence/D-04-metrics-before.png)) lên **3,996 ms** ([D-05](evidence/D-05-metrics-after.png)) — gấp 3.5 lần, vượt cả `latency_threshold_ms=2000` của challenge lẫn SLO 3,000 ms trong `config/dashboard.yaml`. Cả 5/5 request chính thức đều vượt ngưỡng. Trên dashboard ([D-07](evidence/D-07-dashboard-after.png)) chỉ panel Latency chuyển đỏ VƯỢT NGƯỠNG, còn traffic, error rate (0%), cost, tokens và quality vẫn ĐẠT — đây là bằng chứng loại trừ, cho thấy sự cố khu trú ở độ trễ chứ không phải lỗi hệ thống hay quá tải.
-- Trace ID liên quan: `5a68a6d2537f4df7a43a48715519f2c5` (session `k4-challenge-s02`, tổng 3.998 s). Waterfall cho thấy span **`retrieve` chiếm 2.508 s = 62.7% thời gian request**, trong khi `generate` chỉ 0.156 s — chậm gấp 16 lần. Hai trace đối chứng cùng dạng: `73602947f15d9c6020cd21b982e7c148` (s03, 3.672 s) và `abb937c7552ddd4b4997c4b7734ab96a` (s01, 3.606 s).
-- Log line/correlation ID liên quan: `req-240b3f38` ([D-06](evidence/D-06-challenge-log.png)) — `latency_ms: 3996`, `feature: monitoring`, `session_id: k4-challenge-s02`. Hai dòng `request_received` (`09:21:07.195880Z`) và `response_sent` (`09:21:11.195123Z`) cách nhau đúng **4.000 s**, khớp với `latency_ms` trong log và 3.998 s trong trace — ba nguồn độc lập cùng chỉ về một con số. Đủ 5 correlation ID vượt ngưỡng: `req-240b3f38` (3,996 ms), `req-3790faca` (3,671), `req-09e46eb8` (3,651), `req-a277bfde` (3,604), `req-7e6ca59c` (3,570).
-- Root cause: bước RAG retrieval bị chèn delay cố định 2.5 s — `time.sleep(2.5)` tại `app/mock_rag.py:21` khi `STATE["rag_slow"]` được bật. Phần latency tăng thêm (~2.5 s so với baseline ~1.1 s) khớp chính xác thời lượng span `retrieve`. Mọi request `feature=monitoring` đều dính vì `retrieve()` là bước bắt buộc trong `LabAgent.run()`.
-  - **Phát hiện thêm:** client đo được 7,233–18,569 ms trong khi server chỉ ghi 3,570–3,996 ms — chênh tới 4.6 lần. Nguyên nhân: `/chat` là `async def` (`app/main.py:49`) nhưng gọi `agent.run()` đồng bộ (dòng 66), mà `time.sleep` là lệnh blocking nên nó chặn cả event loop; với `--concurrency 5`, các request bị xếp hàng nối đuôi thay vì chạy song song. Đồng thời `latency_ms` chỉ được đo bên trong `agent.run()` (`app/agent.py:31-43`) nên **không tính thời gian chờ hàng đợi** — instrumentation hiện tại đang báo cáo thấp hơn trải nghiệm thật của người dùng.
-- Fix action: (1) *Khắc phục tức thời* — tắt incident bằng `python scripts/inject_incident.py --disable` (`POST /incidents/rag_slow/disable`), đưa p95 về mức baseline. (2) *Nếu là hệ thống production* — đặt **timeout cho bước retrieval** (vd. 500 ms) kèm fallback trả lời không có tài liệu, để một vector store chậm không kéo sập toàn bộ độ trễ; và **không chặn event loop**: chuyển `retrieve` sang bất đồng bộ, hoặc chạy `agent.run()` qua `asyncio.to_thread()`, hoặc khai báo endpoint là `def` để FastAPI tự đẩy sang threadpool — tránh việc một request chậm làm chậm lây sang mọi request đang chờ.
-- Preventive measure: (1) Alert `high_latency_p95` sẵn có trong `config/alert_rules.yaml` (`latency_p95 > 3000ms` duy trì 5 phút) đủ sức bắt sự cố này vì p95 đạt 3,996 ms. (2) **Ghi thêm latency đo ở middleware** (`x-response-time-ms`, đã có sẵn — xem [A-01](evidence/A-01-response-correlation-id.png)) vào log `response_sent` bên cạnh `latency_ms` của agent: chênh lệch giữa hai con số chính là thời gian chờ hàng đợi, thứ mà lần điều tra này chỉ phát hiện được nhờ đọc output của load test chứ không phải từ log. (3) Bổ sung metric thời lượng riêng cho từng span (`retrieve`, `generate`) để biết ngay thành phần nào thoái hoá thay vì phải mở trace thủ công. (4) Đặt SLO theo độ trễ end-to-end phía client, không chỉ theo thời gian xử lý nội bộ.
+- Triệu chứng từ metrics: *(cần điền — kỳ vọng `latency_p95`/`latency_p99` tăng vượt `latency_threshold_ms=2000` ở feature `monitoring` sau khi chạy challenge, vì incident cấu hình sẵn là `rag_slow`)*.
+- Trace ID liên quan: *(cần điền — lọc Langfuse theo `session_id` bắt đầu bằng `k4-challenge-`)*.
+- Log line/correlation ID liên quan: *(cần điền — tìm trong `data/logs.jsonl` các record có `feature=monitoring` và `latency_ms` cao bất thường)*.
+- Root cause: *(cần điền sau khi điều tra — giả thuyết ban đầu: span `retrieve` bị chậm do incident `rag_slow` giả lập `time.sleep(2.5)` trong `app/mock_rag.py:retrieve`)*.
+- Fix action: *(cần điền — ví dụ tắt incident qua `POST /incidents/rag_slow/disable` hoặc tối ưu bước truy xuất tài liệu)*.
+- Preventive measure: *(cần điền — ví dụ thêm alert `high_latency_p95` đã có sẵn ở mục 5 để phát hiện sớm tình huống tương tự trong tương lai)*.
 
 ## 7. Đóng góp cá nhân
 
