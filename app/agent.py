@@ -42,6 +42,9 @@ class LabAgent:
         quality_score = self._heuristic_quality(message, response.text, docs)
         latency_ms = int((time.perf_counter() - started) * 1000)
         cost_usd = self._estimate_cost(response.usage.input_tokens, response.usage.output_tokens)
+        from structlog.contextvars import get_contextvars
+
+        langfuse_client = get_langfuse_client()
 
         langfuse_client.update_current_trace(
             user_id=hash_user_id(user_id),

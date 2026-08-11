@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import os
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from structlog.contextvars import bind_contextvars
+
+load_dotenv()
 
 from .agent import LabAgent
 from .incidents import disable, enable, status
@@ -50,7 +53,7 @@ async def chat(request: Request, body: ChatRequest) -> ChatResponse:
         user_id_hash=hash_user_id(body.user_id),
         session_id=body.session_id,
         feature=body.feature,
-        model=agent.model,
+        model=agent.model, # Thay model bằng model thực tế nếu có nhiều model
         env=os.getenv("APP_ENV", "dev"),
     )
 

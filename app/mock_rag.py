@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import time
 
+from app.tracing import observe
+
 from .incidents import STATE
 
 CORPUS = {
@@ -11,6 +13,7 @@ CORPUS = {
 }
 
 
+@observe(as_type="span")
 def retrieve(message: str) -> list[str]:
     if STATE["tool_fail"]:
         raise RuntimeError("Vector store timeout")
